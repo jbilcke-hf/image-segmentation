@@ -134,7 +134,7 @@ if __name__ == "__main__":
             gr.inputs.Image(label="Input Image"),
             gr.inputs.Textbox(label="Detection Prompt")
         ],
-        outputs=gr.outputs.Dataframe("pandas"),
+        outputs=gr.outputs.Dataframe(type="pandas"),
         title="Object Detection and Grounding",
         description="A Gradio app to detect objects in an image and ground them to captions using Grounding DINO.",
         server_name='0.0.0.0',
