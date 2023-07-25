@@ -1,3 +1,4 @@
+
 import warnings
 warnings.filterwarnings('ignore')
 
@@ -26,7 +27,7 @@ import copy
 
 import numpy as np
 import torch
-from PIL import Image
+from PIL import Image, ImageDraw, ImageFont, ImageOps
 
 # Grounding DINO
 import GroundingDINO.groundingdino.datasets.transforms as T
@@ -35,6 +36,50 @@ from GroundingDINO.groundingdino.util import box_ops
 from GroundingDINO.groundingdino.util.slconfig import SLConfig
 from GroundingDINO.groundingdino.util.utils import clean_state_dict, get_phrases_from_posmap
 
+import cv2
+import numpy as np
+import matplotlib.pyplot as plt
+from lama_cleaner.model_manager import ModelManager
+from lama_cleaner.schema import Config as lama_Config
+
+# segment anything
+from segment_anything import build_sam, SamPredictor, SamAutomaticMaskGenerator
+
+# diffusers
+import PIL
+import requests
+import torch
+from io import BytesIO
+from diffusers import StableDiffusionInpaintPipeline
+from huggingface_hub import hf_hub_download
+
+from  utils import computer_info
+# relate anything
+from ram_utils import iou, sort_and_deduplicate, relation_classes, MLP, show_anns, ram_show_mask
+from ram_train_eval import RamModel,RamPredictor
+from mmengine.config import Config as mmengine_Config
+from lama_cleaner.helper import (
+    load_img,
+    numpy_to_bytes,
+    resize_max_size,
+)
+
+config_file = 'GroundingDINO/groundingdino/config/GroundingDINO_SwinT_OGC.py'
+ckpt_repo_id = "ShilongLiu/GroundingDINO"
+ckpt_filenmae = "groundingdino_swint_ogc.pth"
+sam_checkpoint = './sam_vit_h_4b8939.pth' 
+output_dir = "outputs"
+device = 'cpu'
+
+os.makedirs(output_dir, exist_ok=True)
+groundingdino_model = None
+sam_device = None
+sam_model = None
+sam_predictor = None
+sam_mask_generator = None
+sd_pipe = None
+lama_cleaner_model= None
+ram_model = None
 
 def load_image(image_path):
     # # load image
@@ -54,6 +99,18 @@ def load_image(image_path):
     return image_pil, image
 
 
+def load_model_hf(model_config_path, repo_id, filename, device='cpu'):
+    args = SLConfig.fromfile(model_config_path) 
+    model = build_model(args)
+    args.device = device
+
+    cache_file = hf_hub_download(repo_id=repo_id, filename=filename)
+    checkpoint = torch.load(cache_file, map_location=device)
+    log = model.load_state_dict(clean_state_dict(checkpoint['model']), strict=False)
+    print("Model loaded from {} \n => {}".format(cache_file, log))
+    _ = model.eval()
+    return model    
+    
 def get_grounding_output(model, image, caption, box_threshold, text_threshold, with_logits=True, device="cpu"):
     caption = caption.lower()
     caption = caption.strip()
