@@ -82,8 +82,9 @@ lama_cleaner_model= None
 ram_model = None
 
 def load_image(image_path):
-    # # load image
-    if isinstance(image_path, PIL.Image.Image):
+    if isinstance(image_path, np.ndarray):
+        image_pil = Image.fromarray(image_path.astype(np.uint8))
+    elif isinstance(image_path, PIL.Image.Image):
         image_pil = image_path
     else:
         image_pil = Image.open(image_path).convert("RGB")  # load image
