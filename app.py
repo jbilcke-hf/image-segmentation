@@ -757,7 +757,7 @@ if __name__ == "__main__":
                             remove_mask_extend = gr.Textbox(label="remove_mask_extend", value='10')
 
             run_button.click(fn=run_anything_task, inputs=[
-                            input_image, text_prompt, task_type, inpaint_prompt, box_threshold, text_threshold, iou_threshold, inpaint_mode, mask_source_radio, remove_mode, remove_mask_extend, num_relation], outputs=gr.outputs.Dataframe(type="pandas"), show_progress=True, queue=True)
+                            input_image, text_prompt, task_type, inpaint_prompt, box_threshold, text_threshold, iou_threshold, inpaint_mode, mask_source_radio, remove_mode, remove_mask_extend, num_relation], outputs=[gr.outputs.Dataframe(type="pandas")], show_progress=True, queue=True)
             
             mask_source_radio.change(fn=change_radio_display, inputs=[task_type, mask_source_radio], outputs=[text_prompt, inpaint_prompt, mask_source_radio, num_relation])
             task_type.change(fn=change_radio_display, inputs=[task_type, mask_source_radio], outputs=[text_prompt, inpaint_prompt, mask_source_radio, num_relation])
