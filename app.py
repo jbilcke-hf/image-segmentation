@@ -3,7 +3,7 @@ import warnings
 warnings.filterwarnings('ignore')
 
 import subprocess, io, os, sys, time
-os.system("pip install gradio==3.36.1")
+os.system("pip install gradio==3.38.0")
 import gradio as gr
 
 from loguru import logger
