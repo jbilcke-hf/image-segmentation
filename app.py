@@ -649,7 +649,7 @@ if __name__ == "__main__":
                     ).style(preview=True, columns=[5], object_fit="scale-down", height="auto")          
 
             run_button.click(fn=run_anything_task, inputs=[
-                            input_image, text_prompt, task_type, box_threshold, text_threshold, iou_threshold], outputs=[gr.outputs.JSON(), image_gallery, image_gallery], show_progress=True, queue=True)
+                            input_image, text_prompt, box_threshold, text_threshold, iou_threshold], outputs=[gr.outputs.JSON(), image_gallery, image_gallery], show_progress=True, queue=True)
             
 
         DESCRIPTION = f'### This space is used by the experimental VideoQuest game. <br> It is based on <a href="https://huggingface.co/spaces/yizhangliu/Grounded-Segment-Anything?duplicate=true">Grounded-Segment-Anything</a>'
