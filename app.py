@@ -24,6 +24,7 @@ sys.path.insert(0, './GroundingDINO')
 
 import argparse
 import copy
+import re
 
 import numpy as np
 import torch
@@ -80,6 +81,14 @@ sam_mask_generator = None
 sd_pipe = None
 lama_cleaner_model= None
 ram_model = None
+
+def parse_label_and_score(string):
+    match = re.match(r'([a-z]+)\(([0-9\.]+)\)', string)
+    if match:
+        label, score = match.groups()
+        return label, float(score)
+    else:
+        return None
 
 def get_sam_vit_h_4b8939():
     if not os.path.exists('./sam_vit_h_4b8939.pth'):
@@ -553,12 +562,17 @@ def run_anything_task(input_image, text_prompt, box_threshold, text_threshold,
         color = np.concatenate([np.random.random(3), np.array([0.6])], axis=0)
         # color = np.array([30/255, 144/255, 255/255, 0.6])
         show_mask(mask.cpu().numpy(), plt.gca(), color)
-        results.append({
+        label, score = parse_label_and_score(pred_phrases[i])
+        item = {
             "id": i,
-            "box": boxes_filt[i].tolist(),
-            "label": pred_phrases[i],
+            # "box": boxes_filt[i].tolist(),
+            "label": label,
+            "score": score,
             "color": color
-        })
+        }
+        print("label: " + label)
+        results.append(item)
+        
     for box, label in zip(boxes_filt, pred_phrases):
         show_box(box.cpu().numpy(), plt.gca(), label)
     plt.axis('off')
@@ -567,8 +581,11 @@ def run_anything_task(input_image, text_prompt, box_threshold, text_threshold,
     segment_image_result = cv2.cvtColor(cv2.imread(image_path), cv2.COLOR_BGR2RGB)
     os.remove(image_path)
     output_images.append(segment_image_result)
-    
-    return results, output_images, gr.Gallery.update(label='result images')      
+
+    debug = {
+        "results": results
+    }
+    return debug, output_images, gr.Gallery.update(label='result images')      
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser("Grounded SAM demo", add_help=True)
