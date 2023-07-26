@@ -493,11 +493,13 @@ def run_anything_task(input_image, text_prompt, box_threshold, text_threshold,
     if isinstance(input_image, dict):
         image_pil, image = load_image(input_image['image'].convert("RGB"))
         input_img = input_image['image']
-        output_images.append(input_image['image'])
+        # no need to print back the input image
+        # output_images.append(input_image['image'])
     else:
         image_pil, image = load_image(input_image.convert("RGB"))
         input_img = input_image
-        output_images.append(input_image)
+        # no need to print back the input image
+        # output_images.append(input_image)
 
     size = image_pil.size
     
