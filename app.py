@@ -466,52 +466,6 @@ def concatenate_images_vertical(image1, image2):
 
     return new_image
 
-def relate_anything(input_image, k):    
-    logger.info(f'relate_anything_1_{input_image.size}_')
-    w, h = input_image.size
-    max_edge = 1500
-    if w > max_edge or h > max_edge:
-        ratio = max(w, h) / max_edge
-        new_size = (int(w / ratio), int(h / ratio))
-        input_image.thumbnail(new_size)
-    
-    logger.info(f'relate_anything_2_')
-    # load image
-    pil_image = input_image.convert('RGBA')
-    image = np.array(input_image)
-    sam_masks = sam_mask_generator.generate(image)
-    filtered_masks = sort_and_deduplicate(sam_masks)
-
-    logger.info(f'relate_anything_3_')
-    feat_list = []
-    for fm in filtered_masks:
-        feat = torch.Tensor(fm['feat']).unsqueeze(0).unsqueeze(0).to(device)
-        feat_list.append(feat)
-    feat = torch.cat(feat_list, dim=1).to(device)
-    matrix_output, rel_triplets = ram_model.predict(feat)
-
-    logger.info(f'relate_anything_4_')
-    pil_image_list = []
-    for i, rel in enumerate(rel_triplets[:k]):
-        s,o,r = int(rel[0]),int(rel[1]),int(rel[2])
-        relation = relation_classes[r]
-
-        mask_image = Image.new('RGBA', pil_image.size, color=(0, 0, 0, 0))
-        mask_draw = ImageDraw.Draw(mask_image)
-            
-        draw_selected_mask(filtered_masks[s]['segmentation'], mask_draw)
-        draw_object_mask(filtered_masks[o]['segmentation'], mask_draw)
-
-        current_pil_image = pil_image.copy()
-        current_pil_image.alpha_composite(mask_image)
-                
-        title_image = create_title_image('Red', relation, 'Blue', current_pil_image.size[0])
-        concate_pil_image = concatenate_images_vertical(current_pil_image, title_image)
-        pil_image_list.append(concate_pil_image)
-
-    logger.info(f'relate_anything_5_{len(pil_image_list)}')
-    return pil_image_list
-
 mask_source_draw = "draw a mask on input image"
 mask_source_segment = "type what to detect below"
 
@@ -528,7 +482,6 @@ def run_anything_task(input_image, text_prompt, box_threshold, text_threshold,
             return [], gr.Gallery.update(label='Please upload a image!😂😂😂😂')
 
     file_temp = int(time.time())
-    logger.info(f'run_anything_task_[{file_temp}]_{task_type}/{inpaint_mode}/[{mask_source_radio}]/{remove_mode}/{remove_mask_extend}_[{text_prompt}]/[{inpaint_prompt}]___1_')
 
     output_images = []
 
@@ -662,13 +615,6 @@ if __name__ == "__main__":
             run_button.click(fn=run_anything_task, inputs=[
                             input_image, text_prompt, box_threshold, text_threshold, iou_threshold], outputs=[image_gallery, image_gallery], show_progress=True, queue=True)
 
-        DESCRIPTION = f'### This demo from [Grounded-Segment-Anything](https://github.com/IDEA-Research/Grounded-Segment-Anything). <br>'
-        DESCRIPTION += f'RAM from [RelateAnything](https://github.com/Luodian/RelateAnything). <br>'
-        DESCRIPTION += f'Remove(cleaner) from [lama-cleaner](https://github.com/Sanster/lama-cleaner). <br>'
-        DESCRIPTION += f'Thanks for their excellent work.'
-        DESCRIPTION += f'<p>For faster inference without waiting in queue, you may duplicate the space and upgrade to GPU in settings. \
-                        <a href="https://huggingface.co/spaces/yizhangliu/Grounded-Segment-Anything?duplicate=true"><img style="display: inline; margin-top: 0em; margin-bottom: 0em" src="https://bit.ly/3gLdBN6" alt="Duplicate Space" /></a></p>'
-        gr.Markdown(DESCRIPTION)
 
     computer_info()
     block.launch(server_name='0.0.0.0', debug=args.debug, share=args.share)
