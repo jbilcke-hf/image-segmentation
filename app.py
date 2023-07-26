@@ -546,23 +546,20 @@ def run_anything_task(input_image, text_prompt, box_threshold, text_threshold,
     plt.figure(figsize=(10, 10))
     # we don't draw the background image, we only want the mask
     # plt.imshow(image)
-    boxes_with_labels = zip(boxes_filt, pred_phrases)
 
     results = []
-
 
     for i, mask in enumerate(masks):
         color = np.concatenate([np.random.random(3), np.array([0.6])], axis=0)
         # color = np.array([30/255, 144/255, 255/255, 0.6])
         show_mask(mask.cpu().numpy(), plt.gca(), color)
-        item = {
+        results.append({
             "id": i,
-            "box": boxes_with_labels[i][0].tolist(),
-            "label": boxes_with_labels[i][1],
+            "box": boxes_filt[i].tolist(),
+            "label": pred_phrases[i],
             "color": color
-        }
-        results.append(item)
-    for box, label in boxes_with_labels:
+        })
+    for box, label in zip(boxes_filt, pred_phrases):
         show_box(box.cpu().numpy(), plt.gca(), label)
     plt.axis('off')
     image_path = os.path.join(output_dir, f"grounding_seg_output_{file_temp}.png")
@@ -571,29 +568,7 @@ def run_anything_task(input_image, text_prompt, box_threshold, text_threshold,
     os.remove(image_path)
     output_images.append(segment_image_result)
     
-    result_list = []
-    for i, box in enumerate(boxes_filt):
-        label, score = pred_phrases[i][:-6], float(pred_phrases[i][-4:-1]) # assuming 'roof(0.70)' format
-        print("label: " + label)
-        print("score: " + str(score))
-        print(box.tolist())
-        result_list.append({
-            "id": i,
-            "label": label,
-            "score": score,
-            "box": box.tolist()
-        })
-        
-    debug = {
-        "thing1": boxes_filt.size(0),
-        "thing2": boxes_with_labels,
-        "thing3": pred_phrases,
-        "results": results,
-        "result_list": result_list,
-        
-    }
-
-    return debug, output_images, gr.Gallery.update(label='result images')      
+    return results, output_images, gr.Gallery.update(label='result images')      
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser("Grounded SAM demo", add_help=True)
