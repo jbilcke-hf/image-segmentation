@@ -551,7 +551,7 @@ def run_anything_task(input_image, text_prompt, box_threshold, text_threshold,
         assert sam_checkpoint, 'sam_checkpoint is not found!'
         # draw output image
         plt.figure(figsize=(10, 10))
-        plt.imshow(image)
+        # plt.imshow(image)
         for mask in masks:
             show_mask(mask.cpu().numpy(), plt.gca(), random_color=True)
         for box, label in zip(boxes_filt, pred_phrases):
@@ -563,14 +563,8 @@ def run_anything_task(input_image, text_prompt, box_threshold, text_threshold,
         os.remove(image_path)
         output_images.append(segment_image_result)        
 
-    logger.info(f'run_anything_task_[{file_temp}]_{task_type}_3_')
-    if task_type == 'detection' or task_type == 'segment':
-        logger.info(f'run_anything_task_[{file_temp}]_{task_type}_9_')
-        return output_images, gr.Gallery.update(label='result images')      
-    else:
-        logger.info(f"task_type:{task_type} error!")
-    logger.info(f'run_anything_task_[{file_temp}]_9_9_')
-    return output_images, gr.Gallery.update(label='result images')
+    logger.info(f'run_anything_task_[{file_temp}]_{task_type}_9_')
+    return output_images, gr.Gallery.update(label='result images')      
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser("Grounded SAM demo", add_help=True)
@@ -613,7 +607,7 @@ if __name__ == "__main__":
                     ).style(preview=True, columns=[5], object_fit="scale-down", height="auto")          
 
             run_button.click(fn=run_anything_task, inputs=[
-                            input_image, text_prompt, box_threshold, text_threshold, iou_threshold], outputs=[image_gallery, image_gallery], show_progress=True, queue=True)
+                            input_image, text_prompt, box_threshold, text_threshold, iou_threshold], outputs=[gr.JSON(), image_gallery, image_gallery], show_progress=True, queue=True)
 
 
     computer_info()
