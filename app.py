@@ -520,7 +520,7 @@ def run_anything_task(input_image, text_prompt, box_threshold, text_threshold,
         "size": [size[1], size[0]],  # H,W
         "labels": pred_phrases,
     }
-
+         
     image_with_box = plot_boxes_to_image(copy.deepcopy(image_pil), pred_dict)[0]
     output_images.append(image_with_box)
 
@@ -550,6 +550,12 @@ def run_anything_task(input_image, text_prompt, box_threshold, text_threshold,
     # we don't draw the background image
     # plt.imshow(image)
     boxes_with_labels = zip(boxes_filt, pred_phrases)
+    debug = {
+        "thing1": boxes_filt.size(0),
+        "thing2": boxes_with_labels,
+        "thing3": pred_phrases
+    }
+       
     for mask in masks:
         show_mask(mask.cpu().numpy(), plt.gca(), random_color=True)
     for box, label in boxes_with_labels:
@@ -568,7 +574,7 @@ def run_anything_task(input_image, text_prompt, box_threshold, text_threshold,
         print("score: " + score)
         print(box.tolist())
         
-    return pred_dict, output_images, gr.Gallery.update(label='result images')      
+    return debug, output_images, gr.Gallery.update(label='result images')      
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser("Grounded SAM demo", add_help=True)
