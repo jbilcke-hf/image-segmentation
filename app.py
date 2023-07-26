@@ -563,18 +563,22 @@ def run_anything_task(input_image, text_prompt, box_threshold, text_threshold,
         # color = np.array([30/255, 144/255, 255/255, 0.6])
         show_mask(mask.cpu().numpy(), plt.gca(), color)
         label, score = parse_label_and_score(pred_phrases[i])
+        print("id: " + str(i))
+        print("box: " + str(boxes_filt[i].tolist()))
+        print("label: " + label)
+        print("score: " + str(score))
+        print("color: " + str(color.tolist()))
         item = {
             "id": i,
-            # "box": boxes_filt[i].tolist(),
+            "box": str(boxes_filt[i].tolist()),
             "label": label,
             "score": score,
-            "color": color
+            "color": str(color.tolist())
         }
-        print("label: " + label)
         results.append(item)
         
-    for box, label in zip(boxes_filt, pred_phrases):
-        show_box(box.cpu().numpy(), plt.gca(), label)
+    #for box, label in zip(boxes_filt, pred_phrases):
+    #    show_box(box.cpu().numpy(), plt.gca(), label)
     plt.axis('off')
     image_path = os.path.join(output_dir, f"grounding_seg_output_{file_temp}.png")
     plt.savefig(image_path, bbox_inches="tight")
