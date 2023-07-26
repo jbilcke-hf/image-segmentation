@@ -547,18 +547,22 @@ def run_anything_task(input_image, text_prompt, box_threshold, text_threshold,
     # we don't draw the background image, we only want the mask
     # plt.imshow(image)
     boxes_with_labels = zip(boxes_filt, pred_phrases)
-    debug = {
-        "thing1": boxes_filt.size(0),
-        "thing2": boxes_with_labels,
-        "thing3": pred_phrases
-    }
 
     results = []
-                
+
+    i = 0
     for mask in masks:
         color = np.concatenate([np.random.random(3), np.array([0.6])], axis=0)
         # color = np.array([30/255, 144/255, 255/255, 0.6])
         show_mask(mask.cpu().numpy(), plt.gca(), color)
+        item = {
+            "id": i,
+            "box": boxes_with_labels[i][0].tolist(),
+            "label": boxes_with_labels[i][1],
+            "color": color
+        }
+        i++
+        results.append(item)
     for box, label in boxes_with_labels:
         show_box(box.cpu().numpy(), plt.gca(), label)
     plt.axis('off')
@@ -570,11 +574,26 @@ def run_anything_task(input_image, text_prompt, box_threshold, text_threshold,
     
     result_list = []
     for i, box in enumerate(boxes_filt):
-        label, score = pred_phrases[i][:-5], float(pred_phrases[i][-4:-1]) # assuming 'roof(0.70)' format
+        label, score = pred_phrases[i][:-6], float(pred_phrases[i][-4:-1]) # assuming 'roof(0.70)' format
         print("label: " + label)
         print("score: " + str(score))
         print(box.tolist())
+        result_list.append({
+            "id": i,
+            "label": label,
+            "score": score,
+            "box": box.tolist()
+        })
         
+    debug = {
+        "thing1": boxes_filt.size(0),
+        "thing2": boxes_with_labels,
+        "thing3": pred_phrases,
+        "results": results,
+        "result_list": result_list,
+        
+    }
+
     return debug, output_images, gr.Gallery.update(label='result images')      
 
 if __name__ == "__main__":
