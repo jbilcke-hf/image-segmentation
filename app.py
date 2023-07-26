@@ -550,8 +550,8 @@ def run_anything_task(input_image, text_prompt, box_threshold, text_threshold,
 
     results = []
 
-    i = 0
-    for mask in masks:
+
+    for i, mask in enumerate(masks):
         color = np.concatenate([np.random.random(3), np.array([0.6])], axis=0)
         # color = np.array([30/255, 144/255, 255/255, 0.6])
         show_mask(mask.cpu().numpy(), plt.gca(), color)
@@ -561,7 +561,6 @@ def run_anything_task(input_image, text_prompt, box_threshold, text_threshold,
             "label": boxes_with_labels[i][1],
             "color": color
         }
-        i++
         results.append(item)
     for box, label in boxes_with_labels:
         show_box(box.cpu().numpy(), plt.gca(), label)
