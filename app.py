@@ -210,11 +210,7 @@ def get_grounding_output(model, image, caption, box_threshold, text_threshold, w
 
     return boxes_filt, pred_phrases
 
-def show_mask(mask, ax, random_color=False):
-    if random_color:
-        color = np.concatenate([np.random.random(3), np.array([0.6])], axis=0)
-    else:
-        color = np.array([30/255, 144/255, 255/255, 0.6])
+def show_mask(mask, ax, color):
     h, w = mask.shape[-2:]
     mask_image = mask.reshape(h, w, 1) * color.reshape(1, 1, -1)
     ax.imshow(mask_image)
@@ -515,14 +511,15 @@ def run_anything_task(input_image, text_prompt, box_threshold, text_threshold,
         return [], gr.Gallery.update(label='No objects detected, please try others.😂😂😂😂')
     boxes_filt_ori = copy.deepcopy(boxes_filt)
 
-    pred_dict = {
-        "boxes": boxes_filt,
-        "size": [size[1], size[0]],  # H,W
-        "labels": pred_phrases,
-    }
-         
-    image_with_box = plot_boxes_to_image(copy.deepcopy(image_pil), pred_dict)[0]
-    output_images.append(image_with_box)
+
+    # print bounding boxes only           
+    #pred_dict = {
+    #    "boxes": boxes_filt,
+    #    "size": [size[1], size[0]],  # H,W
+    #    "labels": pred_phrases,
+    #}
+    # image_with_box = plot_boxes_to_image(copy.deepcopy(image_pil), pred_dict)[0]
+    # output_images.append(image_with_box)
 
     # now we generate the segmentation
     image = np.array(input_img)
@@ -547,7 +544,7 @@ def run_anything_task(input_image, text_prompt, box_threshold, text_threshold,
     assert sam_checkpoint, 'sam_checkpoint is not found!'
     # draw output image
     plt.figure(figsize=(10, 10))
-    # we don't draw the background image
+    # we don't draw the background image, we only want the mask
     # plt.imshow(image)
     boxes_with_labels = zip(boxes_filt, pred_phrases)
     debug = {
@@ -555,9 +552,13 @@ def run_anything_task(input_image, text_prompt, box_threshold, text_threshold,
         "thing2": boxes_with_labels,
         "thing3": pred_phrases
     }
-       
+
+    results = []
+                
     for mask in masks:
-        show_mask(mask.cpu().numpy(), plt.gca(), random_color=True)
+        color = np.concatenate([np.random.random(3), np.array([0.6])], axis=0)
+        # color = np.array([30/255, 144/255, 255/255, 0.6])
+        show_mask(mask.cpu().numpy(), plt.gca(), color)
     for box, label in boxes_with_labels:
         show_box(box.cpu().numpy(), plt.gca(), label)
     plt.axis('off')
@@ -571,7 +572,7 @@ def run_anything_task(input_image, text_prompt, box_threshold, text_threshold,
     for i, box in enumerate(boxes_filt):
         label, score = pred_phrases[i][:-5], float(pred_phrases[i][-4:-1]) # assuming 'roof(0.70)' format
         print("label: " + label)
-        print("score: " + score)
+        print("score: " + str(score))
         print(box.tolist())
         
     return debug, output_images, gr.Gallery.update(label='result images')      
