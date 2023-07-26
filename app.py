@@ -515,21 +515,31 @@ def relate_anything(input_image, k):
 mask_source_draw = "draw a mask on input image"
 mask_source_segment = "type what to detect below"
 
-def run_anything_task(input_image, text_prompt, box_threshold, text_threshold, iou_threshold, cleaner_size_limit=1080):
+def run_anything_task(input_image, text_prompt, inpaint_prompt, box_threshold, text_threshold, 
+            iou_threshold, inpaint_mode, mask_source_radio, remove_mode, remove_mask_extend, num_relation, cleaner_size_limit=1080):
+    task_type = "segment"             
+    if (task_type == 'relate anything'):
+        output_images = relate_anything(input_image['image'], num_relation)
+        return output_images, gr.Gallery.update(label='relate images')
 
     text_prompt = text_prompt.strip()
-    if text_prompt == '':
-        return [], gr.Gallery.update(label='Detection prompt is not found!😂😂😂😂')
+    if not ((task_type == 'inpainting' or task_type == 'remove') and mask_source_radio == mask_source_draw):
+        if text_prompt == '':
+            return [], gr.Gallery.update(label='Detection prompt is not found!😂😂😂😂')
 
     if input_image is None:
             return [], gr.Gallery.update(label='Please upload a image!😂😂😂😂')
 
     file_temp = int(time.time())
+    logger.info(f'run_anything_task_[{file_temp}]_{task_type}/{inpaint_mode}/[{mask_source_radio}]/{remove_mode}/{remove_mask_extend}_[{text_prompt}]/[{inpaint_prompt}]___1_')
 
     output_images = []
 
     # load image
-
+    if mask_source_radio == mask_source_draw:
+        input_mask_pil = input_image['mask']
+        input_mask = np.array(input_mask_pil.convert("L"))  
+    
     if isinstance(input_image, dict):
         image_pil, image = load_image(input_image['image'].convert("RGB"))
         input_img = input_image['image']
@@ -542,69 +552,159 @@ def run_anything_task(input_image, text_prompt, box_threshold, text_threshold, i
     size = image_pil.size
     
     # run grounding dino model
-    groundingdino_device = 'cpu'
-    if device != 'cpu':
-        try:
-            from groundingdino import _C
-            groundingdino_device = 'cuda:0'
-        except:
-            warnings.warn("Failed to load custom C++ ops. Running on CPU mode Only in groundingdino!")
+    if (task_type == 'inpainting' or task_type == 'remove') and mask_source_radio == mask_source_draw:
+        pass
+    else:
+        groundingdino_device = 'cpu'
+        if device != 'cpu':
+            try:
+                from groundingdino import _C
+                groundingdino_device = 'cuda:0'
+            except:
+                warnings.warn("Failed to load custom C++ ops. Running on CPU mode Only in groundingdino!")
 
-    boxes_filt, pred_phrases = get_grounding_output(
-        groundingdino_model, image, text_prompt, box_threshold, text_threshold, device=groundingdino_device
-    )
-    if boxes_filt.size(0) == 0:
-        logger.info(f'run_anything_task_[{file_temp}]_[{text_prompt}]_1_[No objects detected, please try others.]_')
-        return [], gr.Gallery.update(label='No objects detected, please try others.😂😂😂😂')
-    boxes_filt_ori = copy.deepcopy(boxes_filt)
+        boxes_filt, pred_phrases = get_grounding_output(
+            groundingdino_model, image, text_prompt, box_threshold, text_threshold, device=groundingdino_device
+        )
+        if boxes_filt.size(0) == 0:
+            logger.info(f'run_anything_task_[{file_temp}]_{task_type}_[{text_prompt}]_1_[No objects detected, please try others.]_')
+            return [], gr.Gallery.update(label='No objects detected, please try others.😂😂😂😂')
+        boxes_filt_ori = copy.deepcopy(boxes_filt)
 
-    pred_dict = {
-        "boxes": boxes_filt,
-        "size": [size[1], size[0]],  # H,W
-        "labels": pred_phrases,
-    }
+        pred_dict = {
+            "boxes": boxes_filt,
+            "size": [size[1], size[0]],  # H,W
+            "labels": pred_phrases,
+        }
 
-    # disabled: we don't want to see the boxes
-    image_with_box = plot_boxes_to_image(copy.deepcopy(image_pil), pred_dict)[0]
-    output_images.append(image_with_box)
+        image_with_box = plot_boxes_to_image(copy.deepcopy(image_pil), pred_dict)[0]
+        output_images.append(image_with_box)
 
-    image = np.array(input_img)
-    sam_predictor.set_image(image)
+    logger.info(f'run_anything_task_[{file_temp}]_{task_type}_2_')
+    if task_type == 'segment' or ((task_type == 'inpainting' or task_type == 'remove') and mask_source_radio == mask_source_segment):
+        image = np.array(input_img)
+        sam_predictor.set_image(image)
 
-    H, W = size[1], size[0]
-    for i in range(boxes_filt.size(0)):
-        boxes_filt[i] = boxes_filt[i] * torch.Tensor([W, H, W, H])
-        boxes_filt[i][:2] -= boxes_filt[i][2:] / 2
-        boxes_filt[i][2:] += boxes_filt[i][:2]
+        H, W = size[1], size[0]
+        for i in range(boxes_filt.size(0)):
+            boxes_filt[i] = boxes_filt[i] * torch.Tensor([W, H, W, H])
+            boxes_filt[i][:2] -= boxes_filt[i][2:] / 2
+            boxes_filt[i][2:] += boxes_filt[i][:2]
 
-    boxes_filt = boxes_filt.to(sam_device)
-    transformed_boxes = sam_predictor.transform.apply_boxes_torch(boxes_filt, image.shape[:2])
+        boxes_filt = boxes_filt.to(sam_device)
+        transformed_boxes = sam_predictor.transform.apply_boxes_torch(boxes_filt, image.shape[:2])
 
-    masks, _, _, _ = sam_predictor.predict_torch(
-        point_coords = None,
-        point_labels = None,
-        boxes = transformed_boxes,
-        multimask_output = False,
-    )
-    # masks: [9, 1, 512, 512]
-    assert sam_checkpoint, 'sam_checkpoint is not found!'
-    # draw output image
-    plt.figure(figsize=(10, 10))
-    plt.imshow(image)
-    for mask in masks:
-        show_mask(mask.cpu().numpy(), plt.gca(), random_color=True)
-    for box, label in zip(boxes_filt, pred_phrases):
-        show_box(box.cpu().numpy(), plt.gca(), label)
-    plt.axis('off')
-    image_path = os.path.join(output_dir, f"grounding_seg_output_{file_temp}.jpg")
-    plt.savefig(image_path, bbox_inches="tight")
-    segment_image_result = cv2.cvtColor(cv2.imread(image_path), cv2.COLOR_BGR2RGB)
-    os.remove(image_path)
-    output_images.append(segment_image_result)        
+        masks, _, _, _ = sam_predictor.predict_torch(
+            point_coords = None,
+            point_labels = None,
+            boxes = transformed_boxes,
+            multimask_output = False,
+        )
+        # masks: [9, 1, 512, 512]
+        assert sam_checkpoint, 'sam_checkpoint is not found!'
+        # draw output image
+        plt.figure(figsize=(10, 10))
+        plt.imshow(image)
+        for mask in masks:
+            show_mask(mask.cpu().numpy(), plt.gca(), random_color=True)
+        for box, label in zip(boxes_filt, pred_phrases):
+            show_box(box.cpu().numpy(), plt.gca(), label)
+        plt.axis('off')
+        image_path = os.path.join(output_dir, f"grounding_seg_output_{file_temp}.jpg")
+        plt.savefig(image_path, bbox_inches="tight")
+        segment_image_result = cv2.cvtColor(cv2.imread(image_path), cv2.COLOR_BGR2RGB)
+        os.remove(image_path)
+        output_images.append(segment_image_result)        
 
+    logger.info(f'run_anything_task_[{file_temp}]_{task_type}_3_')
+    if task_type == 'detection' or task_type == 'segment':
+        logger.info(f'run_anything_task_[{file_temp}]_{task_type}_9_')
+        return output_images, gr.Gallery.update(label='result images')
+    elif task_type == 'inpainting' or task_type == 'remove':
+        if inpaint_prompt.strip() == '' and mask_source_radio == mask_source_segment:
+            task_type = 'remove'
 
-    results = zip(boxes_filt, pred_phrases)
-    return results, output_images, gr.Gallery.update(label='result images')
+        logger.info(f'run_anything_task_[{file_temp}]_{task_type}_4_')  
+        if mask_source_radio == mask_source_draw:
+            mask_pil = input_mask_pil
+            mask = input_mask          
+        else:
+            masks_ori = copy.deepcopy(masks)
+            if inpaint_mode == 'merge':
+                masks = torch.sum(masks, dim=0).unsqueeze(0)
+                masks = torch.where(masks > 0, True, False)
+            mask = masks[0][0].cpu().numpy()
+            mask_pil = Image.fromarray(mask)   
+        output_images.append(mask_pil.convert("RGB"))
+
+        if task_type == 'inpainting':
+            # inpainting pipeline
+            image_source_for_inpaint = image_pil.resize((512, 512))
+            image_mask_for_inpaint = mask_pil.resize((512, 512))
+            image_inpainting = sd_pipe(prompt=inpaint_prompt, image=image_source_for_inpaint, mask_image=image_mask_for_inpaint).images[0]
+        else:
+            # remove from mask
+            logger.info(f'run_anything_task_[{file_temp}]_{task_type}_5_')
+            if mask_source_radio == mask_source_segment:
+                mask_imgs = []
+                masks_shape = masks_ori.shape        
+                boxes_filt_ori_array = boxes_filt_ori.numpy()
+                if inpaint_mode == 'merge':
+                    extend_shape_0 = masks_shape[0]
+                    extend_shape_1 = masks_shape[1]
+                else:
+                    extend_shape_0 = 1
+                    extend_shape_1 = 1
+                for i in range(extend_shape_0):
+                    for j in range(extend_shape_1):                
+                        mask = masks_ori[i][j].cpu().numpy()
+                        mask_pil = Image.fromarray(mask)
+                    
+                        if remove_mode == 'segment':
+                            useRectangle = False
+                        else:
+                            useRectangle = True
+
+                        try:
+                            remove_mask_extend = int(remove_mask_extend)
+                        except:
+                            remove_mask_extend = 10
+                        mask_pil_exp = mask_extend(copy.deepcopy(mask_pil).convert("RGB"), 
+                                        xywh_to_xyxy(torch.tensor(boxes_filt_ori_array[i]), size[0], size[1]),
+                                        extend_pixels=remove_mask_extend, useRectangle=useRectangle)
+                        mask_imgs.append(mask_pil_exp)
+                mask_pil = mix_masks(mask_imgs)
+                output_images.append(mask_pil.convert("RGB"))   
+
+            logger.info(f'run_anything_task_[{file_temp}]_{task_type}_6_')            
+            image_inpainting = lama_cleaner_process(np.array(image_pil), np.array(mask_pil.convert("L")), cleaner_size_limit)
+            # output_images.append(image_inpainting)
+
+        logger.info(f'run_anything_task_[{file_temp}]_{task_type}_7_')
+        image_inpainting = image_inpainting.resize((image_pil.size[0], image_pil.size[1]))
+        output_images.append(image_inpainting)
+        logger.info(f'run_anything_task_[{file_temp}]_{task_type}_9_')
+        return output_images, gr.Gallery.update(label='result images')        
+    else:
+        logger.info(f"task_type:{task_type} error!")
+    logger.info(f'run_anything_task_[{file_temp}]_9_9_')
+    return output_images, gr.Gallery.update(label='result images')
+
+def change_radio_display(task_type, mask_source_radio):
+    text_prompt_visible = True
+    inpaint_prompt_visible = False
+    mask_source_radio_visible = False
+    num_relation_visible = False
+    if task_type == "inpainting":
+        inpaint_prompt_visible = True
+    if task_type == "inpainting" or task_type == "remove":
+        mask_source_radio_visible = True   
+        if mask_source_radio == mask_source_draw:
+            text_prompt_visible = False
+    if task_type == "relate anything":
+        text_prompt_visible = False
+        num_relation_visible = True
+    return  gr.Textbox.update(visible=text_prompt_visible), gr.Textbox.update(visible=inpaint_prompt_visible), gr.Radio.update(visible=mask_source_radio_visible), gr.Slider.update(visible=num_relation_visible) 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser("Grounded SAM demo", add_help=True)
@@ -628,9 +728,14 @@ if __name__ == "__main__":
         with gr.Row():
             with gr.Column():
                 input_image = gr.Image(source='upload', elem_id="image_upload", tool='sketch', type='pil', label="Upload")    
-
+                task_type = gr.Radio(["detection", "segment", "inpainting", "remove", "relate anything"],  value="detection", 
+                                                label='Task type', visible=True) 
+                mask_source_radio = gr.Radio([mask_source_draw, mask_source_segment], 
+                                    value=mask_source_segment, label="Mask from",
+                                    visible=False) 
                 text_prompt = gr.Textbox(label="Detection Prompt[To detect multiple objects, seperating each name with '.', like this: cat . dog . chair ]", placeholder="Cannot be empty")                                                
                 inpaint_prompt = gr.Textbox(label="Inpaint Prompt (if this is empty, then remove)", visible=False)
+                num_relation = gr.Slider(label="How many relations do you want to see", minimum=1, maximum=20, value=5, step=1, visible=False)
                 run_button = gr.Button(label="Run", visible=True)
                 with gr.Accordion("Advanced options", open=False) as advanced_options:
                     box_threshold = gr.Slider(
@@ -642,17 +747,29 @@ if __name__ == "__main__":
                     iou_threshold = gr.Slider(
                         label="IOU Threshold", minimum=0.0, maximum=1.0, value=0.8, step=0.001
                     )                    
-  
+                    inpaint_mode = gr.Radio(["merge", "first"], value="merge", label="inpaint_mode")
+                    with gr.Row():
+                        with gr.Column(scale=1):
+                            remove_mode = gr.Radio(["segment", "rectangle"],  value="segment", label='remove mode') 
+                        with gr.Column(scale=1):
+                            remove_mask_extend = gr.Textbox(label="remove_mask_extend", value='10')
 
             with gr.Column():
                 image_gallery = gr.Gallery(label="result images", show_label=True, elem_id="gallery", visible=True
                     ).style(preview=True, columns=[5], object_fit="scale-down", height="auto")          
 
             run_button.click(fn=run_anything_task, inputs=[
-                            input_image, text_prompt, box_threshold, text_threshold, iou_threshold], outputs=[gr.outputs.JSON(), image_gallery, image_gallery], show_progress=True, queue=True)
+                            input_image, text_prompt, inpaint_prompt, box_threshold, text_threshold, iou_threshold, inpaint_mode, mask_source_radio, remove_mode, remove_mask_extend, num_relation], outputs=[image_gallery, image_gallery], show_progress=True, queue=True)
             
+            mask_source_radio.change(fn=change_radio_display, inputs=[task_type, mask_source_radio], outputs=[text_prompt, inpaint_prompt, mask_source_radio, num_relation])
+            task_type.change(fn=change_radio_display, inputs=[task_type, mask_source_radio], outputs=[text_prompt, inpaint_prompt, mask_source_radio, num_relation])
 
-        DESCRIPTION = f'### This space is used by the experimental VideoQuest game. <br> It is based on <a href="https://huggingface.co/spaces/yizhangliu/Grounded-Segment-Anything?duplicate=true">Grounded-Segment-Anything</a>'
+        DESCRIPTION = f'### This demo from [Grounded-Segment-Anything](https://github.com/IDEA-Research/Grounded-Segment-Anything). <br>'
+        DESCRIPTION += f'RAM from [RelateAnything](https://github.com/Luodian/RelateAnything). <br>'
+        DESCRIPTION += f'Remove(cleaner) from [lama-cleaner](https://github.com/Sanster/lama-cleaner). <br>'
+        DESCRIPTION += f'Thanks for their excellent work.'
+        DESCRIPTION += f'<p>For faster inference without waiting in queue, you may duplicate the space and upgrade to GPU in settings. \
+                        <a href="https://huggingface.co/spaces/yizhangliu/Grounded-Segment-Anything?duplicate=true"><img style="display: inline; margin-top: 0em; margin-bottom: 0em" src="https://bit.ly/3gLdBN6" alt="Duplicate Space" /></a></p>'
         gr.Markdown(DESCRIPTION)
 
     computer_info()
