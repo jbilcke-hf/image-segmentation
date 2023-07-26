@@ -466,6 +466,54 @@ def concatenate_images_vertical(image1, image2):
 
     return new_image
 
+def relate_anything(input_image, k):    
+    logger.info(f'relate_anything_1_{input_image.size}_')
+    w, h = input_image.size
+    max_edge = 1500
+    if w > max_edge or h > max_edge:
+        ratio = max(w, h) / max_edge
+        new_size = (int(w / ratio), int(h / ratio))
+        input_image.thumbnail(new_size)
+    
+    logger.info(f'relate_anything_2_')
+    # load image
+    pil_image = input_image.convert('RGBA')
+    image = np.array(input_image)
+    sam_masks = sam_mask_generator.generate(image)
+    filtered_masks = sort_and_deduplicate(sam_masks)
+
+    logger.info(f'relate_anything_3_')
+    feat_list = []
+    for fm in filtered_masks:
+        feat = torch.Tensor(fm['feat']).unsqueeze(0).unsqueeze(0).to(device)
+        feat_list.append(feat)
+    feat = torch.cat(feat_list, dim=1).to(device)
+    matrix_output, rel_triplets = ram_model.predict(feat)
+
+    logger.info(f'relate_anything_4_')
+    pil_image_list = []
+    for i, rel in enumerate(rel_triplets[:k]):
+        s,o,r = int(rel[0]),int(rel[1]),int(rel[2])
+        relation = relation_classes[r]
+
+        mask_image = Image.new('RGBA', pil_image.size, color=(0, 0, 0, 0))
+        mask_draw = ImageDraw.Draw(mask_image)
+            
+        draw_selected_mask(filtered_masks[s]['segmentation'], mask_draw)
+        draw_object_mask(filtered_masks[o]['segmentation'], mask_draw)
+
+        current_pil_image = pil_image.copy()
+        current_pil_image.alpha_composite(mask_image)
+                
+        title_image = create_title_image('Red', relation, 'Blue', current_pil_image.size[0])
+        concate_pil_image = concatenate_images_vertical(current_pil_image, title_image)
+        pil_image_list.append(concate_pil_image)
+
+    logger.info(f'relate_anything_5_{len(pil_image_list)}')
+    return pil_image_list
+
+mask_source_draw = "draw a mask on input image"
+mask_source_segment = "type what to detect below"
 
 def run_anything_task(input_image, text_prompt, box_threshold, text_threshold, iou_threshold, cleaner_size_limit=1080):
 
@@ -492,7 +540,7 @@ def run_anything_task(input_image, text_prompt, box_threshold, text_threshold, i
         output_images.append(input_image)
 
     size = image_pil.size
-
+    
     # run grounding dino model
     groundingdino_device = 'cpu'
     if device != 'cpu':
@@ -506,7 +554,7 @@ def run_anything_task(input_image, text_prompt, box_threshold, text_threshold, i
         groundingdino_model, image, text_prompt, box_threshold, text_threshold, device=groundingdino_device
     )
     if boxes_filt.size(0) == 0:
-        logger.info(f'run_anything_task_[{file_temp}]_[{text_prompt}]_1_[No objects detected, please try others.]_')
+        logger.info(f'run_anything_task_[{file_temp}]_{task_type}_[{text_prompt}]_1_[No objects detected, please try others.]_')
         return [], gr.Gallery.update(label='No objects detected, please try others.😂😂😂😂')
     boxes_filt_ori = copy.deepcopy(boxes_filt)
 
@@ -516,15 +564,52 @@ def run_anything_task(input_image, text_prompt, box_threshold, text_threshold, i
         "labels": pred_phrases,
     }
 
-    image_with_box = plot_boxes_to_image(copy.deepcopy(image_pil), pred_dict)[0]
-    output_images.append(image_with_box)
+    # disabled: we don't want to see the boxes
+    # image_with_box = plot_boxes_to_image(copy.deepcopy(image_pil), pred_dict)[0]
+    # output_images.append(image_with_box)
 
 
-    return pred_dict
- 
+    if task_type == 'segment':
+        image = np.array(input_img)
+        sam_predictor.set_image(image)
+
+        H, W = size[1], size[0]
+        for i in range(boxes_filt.size(0)):
+            boxes_filt[i] = boxes_filt[i] * torch.Tensor([W, H, W, H])
+            boxes_filt[i][:2] -= boxes_filt[i][2:] / 2
+            boxes_filt[i][2:] += boxes_filt[i][:2]
+
+        boxes_filt = boxes_filt.to(sam_device)
+        transformed_boxes = sam_predictor.transform.apply_boxes_torch(boxes_filt, image.shape[:2])
+
+        masks, _, _, _ = sam_predictor.predict_torch(
+            point_coords = None,
+            point_labels = None,
+            boxes = transformed_boxes,
+            multimask_output = False,
+        )
+        # masks: [9, 1, 512, 512]
+        assert sam_checkpoint, 'sam_checkpoint is not found!'
+        # draw output image
+        plt.figure(figsize=(10, 10))
+        plt.imshow(image)
+        for mask in masks:
+            show_mask(mask.cpu().numpy(), plt.gca(), random_color=True)
+        for box, label in zip(boxes_filt, pred_phrases):
+            show_box(box.cpu().numpy(), plt.gca(), label)
+        plt.axis('off')
+        image_path = os.path.join(output_dir, f"grounding_seg_output_{file_temp}.jpg")
+        plt.savefig(image_path, bbox_inches="tight")
+        segment_image_result = cv2.cvtColor(cv2.imread(image_path), cv2.COLOR_BGR2RGB)
+        os.remove(image_path)
+        output_images.append(segment_image_result)        
+
+
+    results = zip(boxes_filt, pred_phrases)
+    return results, output_images, gr.Gallery.update(label='result images')
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser("VideoQuest segmentation module", add_help=True)
+    parser = argparse.ArgumentParser("Grounded SAM demo", add_help=True)
     parser.add_argument("--debug", action="store_true", help="using debug mode")
     parser.add_argument("--share", action="store_true", help="share the app")
     args = parser.parse_args()
@@ -547,7 +632,7 @@ if __name__ == "__main__":
                 input_image = gr.Image(source='upload', elem_id="image_upload", tool='sketch', type='pil', label="Upload")    
 
                 text_prompt = gr.Textbox(label="Detection Prompt[To detect multiple objects, seperating each name with '.', like this: cat . dog . chair ]", placeholder="Cannot be empty")                                                
-
+                inpaint_prompt = gr.Textbox(label="Inpaint Prompt (if this is empty, then remove)", visible=False)
                 run_button = gr.Button(label="Run", visible=True)
                 with gr.Accordion("Advanced options", open=False) as advanced_options:
                     box_threshold = gr.Slider(
@@ -559,9 +644,15 @@ if __name__ == "__main__":
                     iou_threshold = gr.Slider(
                         label="IOU Threshold", minimum=0.0, maximum=1.0, value=0.8, step=0.001
                     )                    
+  
+
+            with gr.Column():
+                image_gallery = gr.Gallery(label="result images", show_label=True, elem_id="gallery", visible=True
+                    ).style(preview=True, columns=[5], object_fit="scale-down", height="auto")          
 
             run_button.click(fn=run_anything_task, inputs=[
-                            input_image, text_prompt, box_threshold, text_threshold, iou_threshold], outputs=[gr.outputs.JSON()], show_progress=True, queue=True)
+                            input_image, text_prompt, task_type, box_threshold, text_threshold, iou_threshold], outputs=[gr.outputs.JSON(), image_gallery, image_gallery], show_progress=True, queue=True)
+            
 
         DESCRIPTION = f'### This space is used by the experimental VideoQuest game. <br> It is based on <a href="https://huggingface.co/spaces/yizhangliu/Grounded-Segment-Anything?duplicate=true">Grounded-Segment-Anything</a>'
         gr.Markdown(DESCRIPTION)
