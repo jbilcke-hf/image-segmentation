@@ -1,7 +1,7 @@
 accelerate
 addict
 diffusers
-gradio==3.36.1
+gradio==3.38.0
 huggingface_hub
 matplotlib
 numpy
