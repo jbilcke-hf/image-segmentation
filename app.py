@@ -499,72 +499,68 @@ def run_anything_task(input_image, text_prompt, box_threshold, text_threshold,
     size = image_pil.size
     
     # run grounding dino model
-    if (task_type == 'inpainting' or task_type == 'remove') and mask_source_radio == mask_source_draw:
-        pass
-    else:
-        groundingdino_device = 'cpu'
-        if device != 'cpu':
-            try:
-                from groundingdino import _C
-                groundingdino_device = 'cuda:0'
-            except:
-                warnings.warn("Failed to load custom C++ ops. Running on CPU mode Only in groundingdino!")
+    groundingdino_device = 'cpu'
+    if device != 'cpu':
+        try:
+            from groundingdino import _C
+            groundingdino_device = 'cuda:0'
+        except:
+            warnings.warn("Failed to load custom C++ ops. Running on CPU mode Only in groundingdino!")
 
-        boxes_filt, pred_phrases = get_grounding_output(
-            groundingdino_model, image, text_prompt, box_threshold, text_threshold, device=groundingdino_device
-        )
-        if boxes_filt.size(0) == 0:
-            logger.info(f'run_anything_task_[{file_temp}]_{task_type}_[{text_prompt}]_1_[No objects detected, please try others.]_')
-            return [], gr.Gallery.update(label='No objects detected, please try others.😂😂😂😂')
-        boxes_filt_ori = copy.deepcopy(boxes_filt)
+    boxes_filt, pred_phrases = get_grounding_output(
+        groundingdino_model, image, text_prompt, box_threshold, text_threshold, device=groundingdino_device
+    )
+    if boxes_filt.size(0) == 0:
+        logger.info(f'run_anything_task_[{file_temp}]_{task_type}_[{text_prompt}]_1_[No objects detected, please try others.]_')
+        return [], gr.Gallery.update(label='No objects detected, please try others.😂😂😂😂')
+    boxes_filt_ori = copy.deepcopy(boxes_filt)
 
-        pred_dict = {
-            "boxes": boxes_filt,
-            "size": [size[1], size[0]],  # H,W
-            "labels": pred_phrases,
-        }
+    pred_dict = {
+        "boxes": boxes_filt,
+        "size": [size[1], size[0]],  # H,W
+        "labels": pred_phrases,
+    }
 
-        image_with_box = plot_boxes_to_image(copy.deepcopy(image_pil), pred_dict)[0]
-        output_images.append(image_with_box)
+    image_with_box = plot_boxes_to_image(copy.deepcopy(image_pil), pred_dict)[0]
+    output_images.append(image_with_box)
 
-    logger.info(f'run_anything_task_[{file_temp}]_{task_type}_2_')
-    if task_type == 'segment' or ((task_type == 'inpainting' or task_type == 'remove') and mask_source_radio == mask_source_segment):
-        image = np.array(input_img)
-        sam_predictor.set_image(image)
+    # now we generate the segmentation
+    image = np.array(input_img)
+    sam_predictor.set_image(image)
 
-        H, W = size[1], size[0]
-        for i in range(boxes_filt.size(0)):
-            boxes_filt[i] = boxes_filt[i] * torch.Tensor([W, H, W, H])
-            boxes_filt[i][:2] -= boxes_filt[i][2:] / 2
-            boxes_filt[i][2:] += boxes_filt[i][:2]
+    H, W = size[1], size[0]
+    for i in range(boxes_filt.size(0)):
+        boxes_filt[i] = boxes_filt[i] * torch.Tensor([W, H, W, H])
+        boxes_filt[i][:2] -= boxes_filt[i][2:] / 2
+        boxes_filt[i][2:] += boxes_filt[i][:2]
 
-        boxes_filt = boxes_filt.to(sam_device)
-        transformed_boxes = sam_predictor.transform.apply_boxes_torch(boxes_filt, image.shape[:2])
+    boxes_filt = boxes_filt.to(sam_device)
+    transformed_boxes = sam_predictor.transform.apply_boxes_torch(boxes_filt, image.shape[:2])
 
-        masks, _, _, _ = sam_predictor.predict_torch(
-            point_coords = None,
-            point_labels = None,
-            boxes = transformed_boxes,
-            multimask_output = False,
-        )
-        # masks: [9, 1, 512, 512]
-        assert sam_checkpoint, 'sam_checkpoint is not found!'
-        # draw output image
-        plt.figure(figsize=(10, 10))
-        # we don't draw the background image
-        # plt.imshow(image)
-        for mask in masks:
-            show_mask(mask.cpu().numpy(), plt.gca(), random_color=True)
-        # for box, label in zip(boxes_filt, pred_phrases):
-         #   show_box(box.cpu().numpy(), plt.gca(), label)
-        plt.axis('off')
-        image_path = os.path.join(output_dir, f"grounding_seg_output_{file_temp}.png")
-        plt.savefig(image_path, bbox_inches="tight")
-        segment_image_result = cv2.cvtColor(cv2.imread(image_path), cv2.COLOR_BGR2RGB)
-        os.remove(image_path)
-        output_images.append(segment_image_result)        
+    masks, _, _, _ = sam_predictor.predict_torch(
+        point_coords = None,
+        point_labels = None,
+        boxes = transformed_boxes,
+        multimask_output = False,
+    )
+    # masks: [9, 1, 512, 512]
+    assert sam_checkpoint, 'sam_checkpoint is not found!'
+    # draw output image
+    plt.figure(figsize=(10, 10))
+    # we don't draw the background image
+    # plt.imshow(image)
+    boxes_with_labels = zip(boxes_filt, pred_phrases)
+    for mask in masks:
+        show_mask(mask.cpu().numpy(), plt.gca(), random_color=True)
+    for box, label in boxes_with_labels:
+        show_box(box.cpu().numpy(), plt.gca(), label)
+    plt.axis('off')
+    image_path = os.path.join(output_dir, f"grounding_seg_output_{file_temp}.png")
+    plt.savefig(image_path, bbox_inches="tight")
+    segment_image_result = cv2.cvtColor(cv2.imread(image_path), cv2.COLOR_BGR2RGB)
+    os.remove(image_path)
+    output_images.append(segment_image_result)        
 
-    logger.info(f'run_anything_task_[{file_temp}]_{task_type}_9_')
     return pred_dict, output_images, gr.Gallery.update(label='result images')      
 
 if __name__ == "__main__":
