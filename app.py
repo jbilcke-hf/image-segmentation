@@ -559,8 +559,15 @@ def run_anything_task(input_image, text_prompt, box_threshold, text_threshold,
     plt.savefig(image_path, bbox_inches="tight")
     segment_image_result = cv2.cvtColor(cv2.imread(image_path), cv2.COLOR_BGR2RGB)
     os.remove(image_path)
-    output_images.append(segment_image_result)        
-
+    output_images.append(segment_image_result)
+    
+    result_list = []
+    for i, box in enumerate(boxes_filt):
+        label, score = pred_phrases[i][:-5], float(pred_phrases[i][-4:-1]) # assuming 'roof(0.70)' format
+        print("label: " + label)
+        print("score: " + score)
+        print(box.tolist())
+        
     return pred_dict, output_images, gr.Gallery.update(label='result images')      
 
 if __name__ == "__main__":
