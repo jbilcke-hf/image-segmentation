@@ -1,5 +1,5 @@
 ---
-title: VideoQuest Segmentation Module
+title: Image Segmentation
 emoji: 🎞🪚
 colorFrom: yellow
 colorTo: brown
@@ -10,4 +10,4 @@ pinned: false
 duplicated_from: yizhangliu/Grounded-Segment-Anything
 ---
 
-This Space is used by VideoQuest, an experimental demo game
+This Space is duplicated from yizhangliu/Grounded-Segment-Anything
