@@ -551,20 +551,21 @@ def run_anything_task(input_image, text_prompt, box_threshold, text_threshold,
         assert sam_checkpoint, 'sam_checkpoint is not found!'
         # draw output image
         plt.figure(figsize=(10, 10))
+        # we don't draw the background image
         # plt.imshow(image)
         for mask in masks:
             show_mask(mask.cpu().numpy(), plt.gca(), random_color=True)
-        for box, label in zip(boxes_filt, pred_phrases):
-            show_box(box.cpu().numpy(), plt.gca(), label)
+        # for box, label in zip(boxes_filt, pred_phrases):
+         #   show_box(box.cpu().numpy(), plt.gca(), label)
         plt.axis('off')
-        image_path = os.path.join(output_dir, f"grounding_seg_output_{file_temp}.jpg")
+        image_path = os.path.join(output_dir, f"grounding_seg_output_{file_temp}.png")
         plt.savefig(image_path, bbox_inches="tight")
         segment_image_result = cv2.cvtColor(cv2.imread(image_path), cv2.COLOR_BGR2RGB)
         os.remove(image_path)
         output_images.append(segment_image_result)        
 
     logger.info(f'run_anything_task_[{file_temp}]_{task_type}_9_')
-    return output_images, gr.Gallery.update(label='result images')      
+    return pred_dict, output_images, gr.Gallery.update(label='result images')      
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser("Grounded SAM demo", add_help=True)
