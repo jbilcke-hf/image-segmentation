@@ -8,9 +8,6 @@ import gradio as gr
 
 from loguru import logger
 
-# os.system("pip install diffuser==0.6.0")
-# os.system("pip install transformers==4.29.1")
-
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 
 if os.environ.get('IS_MY_DEBUG') is None:
@@ -25,6 +22,7 @@ sys.path.insert(0, './GroundingDINO')
 import argparse
 import copy
 import re
+import json
 
 import numpy as np
 import torch
@@ -570,10 +568,10 @@ def run_anything_task(input_image, text_prompt, box_threshold, text_threshold,
         print("color: " + str(color.tolist()))
         item = {
             "id": i,
-            "box": str(boxes_filt[i].tolist()),
+            "box": boxes_filt[i].tolist(),
             "label": label,
             "score": score,
-            "color": str(color.tolist())
+            "color": color.tolist(),
         }
         results.append(item)
         
@@ -586,10 +584,7 @@ def run_anything_task(input_image, text_prompt, box_threshold, text_threshold,
     os.remove(image_path)
     output_images.append(segment_image_result)
 
-    debug = {
-        "results": results
-    }
-    return debug, output_images, gr.Gallery.update(label='result images')      
+    return json.dumps(results), output_images, gr.Gallery.update(label='result images')      
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser("Grounded SAM demo", add_help=True)
@@ -632,8 +627,6 @@ if __name__ == "__main__":
                     ).style(preview=True, columns=[5], object_fit="scale-down", height="auto")          
 
             run_button.click(fn=run_anything_task, inputs=[
-                            input_image, text_prompt, box_threshold, text_threshold, iou_threshold], outputs=[gr.JSON(), image_gallery, image_gallery], show_progress=True, queue=True)
+                            input_image, text_prompt, box_threshold, text_threshold, iou_threshold], outputs=[gr.Textbox(), image_gallery, image_gallery], show_progress=True, queue=True)
 
-
-    computer_info()
     block.launch(server_name='0.0.0.0', debug=args.debug, share=args.share)
